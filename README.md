@@ -52,6 +52,8 @@ The project targets .NET 10 and needs both a Vintage Story and Visual Studio 202
 1. Load the `SmoothStonePaths.slnx` in Visual Studio.
 2. Press `CTRL + SHIFT + B` to build from source.
 
+If the build process cannot find your game files, reinstall the game or manually set your `VINTAGE_STORY` environment variable to the correct path.
+
 To debug:
 
 1. Right-click `SmoothStonePaths` in the Solution Explorer tab.
