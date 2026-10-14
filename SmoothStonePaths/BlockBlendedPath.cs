@@ -11,14 +11,21 @@ public class BlockBlendedPath : Block
     // TileSideEnum order is N, E, S, W; pieces are authored for north / north-east.
     private static readonly int[] RotationY = { 0, 270, 180, 90 };
 
-    private static string ShapeName(PieceKind kind)
+    // Concave strips share the plain strips' shapes; only their texture differs.
+    private static string ShapeName(Piece piece)
     {
-        switch (kind)
+        switch (piece.Kind)
         {
             case PieceKind.BleedEast: return "bleed-east";
             case PieceKind.BleedWest: return "bleed-west";
             case PieceKind.Inner: return "inner";
-            default: return "edge"; // concave strips share the plain strip's shape; only their texture differs
+            default:
+                switch (piece.Variant)
+                {
+                    case StripVariant.Long: return "edge-long";
+                    case StripVariant.PatternB: return "edge-b";
+                    default: return "edge-a";
+                }
         }
     }
 
@@ -48,7 +55,7 @@ public class BlockBlendedPath : Block
     private ICoreClientAPI capi;
     private readonly object cacheLock = new object();
     private readonly Dictionary<Piece, MeshData> pieces = new Dictionary<Piece, MeshData>();
-    private readonly Dictionary<(MeshData baseMesh, long key), MeshData> composites = new Dictionary<(MeshData, long), MeshData>();
+    private readonly Dictionary<(MeshData baseMesh, long key, int variation), MeshData> composites = new Dictionary<(MeshData, long, int), MeshData>();
 
     public override void OnLoaded(ICoreAPI api)
     {
@@ -69,13 +76,14 @@ public class BlockBlendedPath : Block
 
         long key = ComputeKey(chunkExtBlocks, extIndex3d);
         if (key == 0) return;
+        int variation = pos == null ? 0 : FringePlan.ChooseVariation(key, pos.X, pos.Y, pos.Z);
 
         lock (cacheLock)
         {
-            var cacheKey = (sourceMesh, key);
+            var cacheKey = (sourceMesh, key, variation);
             if (!composites.TryGetValue(cacheKey, out MeshData composite))
             {
-                composite = Compose(sourceMesh, key);
+                composite = Compose(sourceMesh, key, variation);
                 composites[cacheKey] = composite;
             }
             sourceMesh = composite;
@@ -89,20 +97,32 @@ public class BlockBlendedPath : Block
         long key = 0;
         for (int side = 0; side < 4; side++)
         {
-            key |= (long)FringeMaterials.Classify(At(chunkExtBlocks, extIndex3d + move[side])) << (side * FringeMaterials.Bits);
+            key |= (long)ClassifyExposed(chunkExtBlocks, extIndex3d + move[side]) << (side * FringeMaterials.Bits);
         }
         for (int corner = 0; corner < 4; corner++)
         {
             int offset = move[corner] + move[(corner + 1) % 4];
-            key |= (long)FringeMaterials.Classify(At(chunkExtBlocks, extIndex3d + offset)) << ((4 + corner) * FringeMaterials.Bits);
+            key |= (long)ClassifyExposed(chunkExtBlocks, extIndex3d + offset) << ((4 + corner) * FringeMaterials.Bits);
         }
         return key;
     }
 
-    private MeshData Compose(MeshData baseMesh, long key)
+    // A neighbour whose top is covered by a block with a solid bottom (stairs, a full block, a bottom slab) shows no
+    // grass, sand or dirt, so it gets no fringe. Plants and air above it leave its top exposed.
+    private static int ClassifyExposed(Block[] chunkExtBlocks, int index)
+    {
+        int material = FringeMaterials.Classify(At(chunkExtBlocks, index));
+        if (material == FringeMaterials.None) return material;
+
+        Block above = At(chunkExtBlocks, index + TileSideEnum.MoveIndex[BlockFacing.indexUP]);
+        if (above != null && above.Id != 0 && above.SideSolid[BlockFacing.indexDOWN]) return FringeMaterials.None;
+        return material;
+    }
+
+    private MeshData Compose(MeshData baseMesh, long key, int variation)
     {
         MeshData result = null;
-        foreach (Piece piece in FringePlan.Build(key))
+        foreach (Piece piece in FringePlan.Build(key, variation))
         {
             MeshData mesh = GetPiece(piece);
             if (mesh == null) continue;
@@ -120,7 +140,7 @@ public class BlockBlendedPath : Block
         string textureCode = FringeMaterials.TextureCodes[piece.Material];
         if (piece.Kind == PieceKind.EdgeConcave) textureCode += FringeMaterials.ConcaveSuffix;
         TextureAtlasPosition texture = capi.BlockTextureAtlas.GetPosition(this, textureCode, true);
-        var location = new AssetLocation("smoothstonepaths", "shapes/block/fringe/" + ShapeName(piece.Kind) + ".json");
+        var location = new AssetLocation("smoothstonepaths", "shapes/block/fringe/" + ShapeName(piece) + ".json");
         // "Shape" alone would bind to Block.Shape (a CompositeShape), so the type is fully qualified.
         Vintagestory.API.Common.Shape shape = Vintagestory.API.Common.Shape.TryGet(capi, location);
         if (texture == null)

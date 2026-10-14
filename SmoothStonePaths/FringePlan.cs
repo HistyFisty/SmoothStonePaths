@@ -20,7 +20,18 @@ internal enum PieceKind
 }
 
 /// <param name="Index">Side index (N, E, S, W = 0-3) for edge, concave edge and bleed pieces; corner index (NE, SE, SW, NW = 0-3) for inner pieces.</param>
-internal readonly record struct Piece(PieceKind Kind, int Material, int Index);
+/// <param name="Variant">For edge and concave edge pieces, one of the <see cref="StripVariant"/> values; 0 for every other piece.</param>
+internal readonly record struct Piece(PieceKind Kind, int Material, int Index, int Variant = 0);
+
+internal static class StripVariant
+{
+    /// <summary>Short strip, first speckle pattern.</summary>
+    public const int PatternA = 0;
+    /// <summary>Short strip, second speckle pattern.</summary>
+    public const int PatternB = 1;
+    /// <summary>Long strip that bulges in the middle and tapers to the short depth at both ends.</summary>
+    public const int Long = 2;
+}
 
 /// <summary>
 /// Decides which fringe pieces a path block needs from its neighbour key. The key holds one material id per
@@ -32,9 +43,47 @@ internal static class FringePlan
 
     public static int Corner(long key, int corner) => Slot(key, 4 + corner);
 
-    public static List<Piece> Build(long key)
+    /// <summary>A block gets one long side when a d2 rolls 1 and a coin toss then comes up heads (1 block in 4).</summary>
+    public const int LongSideDie = 2;
+
+    /// <summary>
+    /// Picks the per-block variation from the block's position, so it is the same on every redraw and on every client:
+    /// a speckle pattern for each side, and possibly one long side chosen from the sides that have a fringe.
+    /// Bits 0-2 hold the long side + 1 (0 = none); bits 3-6 hold the pattern of sides N, E, S, W.
+    /// </summary>
+    public static int ChooseVariation(long key, int x, int y, int z)
+    {
+        uint hash = Hash(x, y, z);
+        int patterns = (int)(hash & 0xF);
+
+        int longSide = -1;
+        bool rolledOne = ((hash >> 4) & 0xFF) % LongSideDie == 0;
+        bool heads = ((hash >> 12) & 1) == 1;
+        if (rolledOne && heads)
+        {
+            int fringedSides = 0;
+            for (int side = 0; side < 4; side++)
+            {
+                if (Side(key, side) != FringeMaterials.None) fringedSides++;
+            }
+            if (fringedSides > 0)
+            {
+                int pick = (int)((hash >> 16) % (uint)fringedSides);
+                for (int side = 0; side < 4; side++)
+                {
+                    if (Side(key, side) == FringeMaterials.None) continue;
+                    if (pick-- == 0) { longSide = side; break; }
+                }
+            }
+        }
+
+        return (longSide + 1) | (patterns << 3);
+    }
+
+    public static List<Piece> Build(long key, int variation)
     {
         var pieces = new List<Piece>();
+        int longSide = (variation & 7) - 1;
 
         // Two fringed sides meet in the corner between them, where their strips overlap. If the materials differ,
         // the strip that comes second clockwise is drawn over the other one using its concave variant.
@@ -45,7 +94,8 @@ internal static class FringePlan
 
             int counterClockwiseSide = Side(key, (side + 3) % 4);
             bool concave = counterClockwiseSide != FringeMaterials.None && counterClockwiseSide != material;
-            pieces.Add(new Piece(concave ? PieceKind.EdgeConcave : PieceKind.Edge, material, side));
+            int variant = side == longSide ? StripVariant.Long : (variation >> (3 + side)) & 1;
+            pieces.Add(new Piece(concave ? PieceKind.EdgeConcave : PieceKind.Edge, material, side, variant));
         }
 
         // Where a fringed side meets a differently-fringed diagonal, both blocks mix in the other's material at
@@ -78,6 +128,20 @@ internal static class FringePlan
         }
 
         return pieces;
+    }
+
+    private static uint Hash(int x, int y, int z)
+    {
+        unchecked
+        {
+            uint h = (uint)x * 0x8DA6B343u ^ (uint)y * 0xD8163841u ^ (uint)z * 0xCB1AB31Fu;
+            h ^= h >> 16;
+            h *= 0x7FEB352Du;
+            h ^= h >> 15;
+            h *= 0x846CA68Bu;
+            h ^= h >> 16;
+            return h;
+        }
     }
 
     private static int Slot(long key, int slot) => (int)((key >> (slot * FringeMaterials.Bits)) & ((1 << FringeMaterials.Bits) - 1));

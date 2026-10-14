@@ -6,17 +6,23 @@
 # alpha > 0 are REMOVED from the base texture, so the fringe is the vanilla texture with
 # dithered holes. Every base texture they are applied to must be 32x32.
 #
-# cutout.png layout in texels (shape uv values are texels / 2):
-#   edge          cols  0-31, rows  0-13   full-width strip along one side
-#   bleed east    cols  0-11, rows 14-27   x 10..16, density ramps up to 50% toward the east end
-#   bleed west    cols 12-23, rows 14-27   x  0..6,  density ramps up to 50% toward the west end
-#   inner corner  cols 24-31, rows 14-21   4x4 quarter fade anchored at the north-east corner
+# Strips are 3 px deep (6 texel rows). One side of some blocks gets a long strip instead,
+# which bulges to 7 px in the middle and tapers back to 3 px at both ends so it meets the
+# neighbouring blocks' strips at the same depth.
 #
-# cutout-concave.png is the same full-width strip (cols 0-31, rows 0-13) for a side whose
-# counter-clockwise neighbour side is fringed with a different material. That neighbour's strip
-# runs along this strip's west end, so the west end is thinned wherever the neighbour's strip is
-# dense. This strip is drawn over the neighbour's, so the corner shows both materials roughly
-# evenly (50/50 at the corner point) instead of the top strip winning every texel it keeps.
+# cutout.png layout in texels (shape uv values are texels / 2):
+#   edge A        cols  0-31, rows  0-5    short strip, first speckle pattern
+#   edge B        cols  0-31, rows  6-11   short strip, second speckle pattern
+#   edge long     cols  0-31, rows 12-25   long strip (bulge)
+#   bleed east    cols  0-11, rows 26-31   x 10..16, density ramps up to 50% toward the east end
+#   bleed west    cols 12-23, rows 26-31   x  0..6,  density ramps up to 50% toward the west end
+#   inner corner  cols 24-27, rows 26-29   2x2 px quarter fade anchored at the north-east corner
+#
+# cutout-concave.png holds the same three strips (A, B, long) for a side whose counter-clockwise
+# neighbour side is fringed with a different material. That neighbour's strip runs along this
+# strip's west end, so the west end is thinned wherever the neighbour's strip is dense. This strip
+# is drawn over the neighbour's, so the corner shows both materials roughly evenly (50/50 at the
+# corner point) instead of the top strip winning every texel it keeps.
 
 Add-Type -AssemblyName System.Drawing
 
@@ -24,10 +30,17 @@ $assets = Join-Path $PSScriptRoot '..\SmoothStonePaths\assets\smoothstonepaths'
 $rocks = 'andesite', 'basalt', 'bauxite', 'chalk', 'chert', 'claystone', 'conglomerate', 'granite', 'limestone', 'peridotite', 'phyllite', 'sandstone', 'shale', 'slate'
 $fertilities = 'verylow', 'low', 'medium', 'compost', 'high'
 
+$ShortRows = 6
+$LongRows = 14
+
 function Clamp01([double]$v) { [Math]::Max(0.0, [Math]::Min(1.0, $v)) }
 
-# Probability that a texel at this row (0 = the neighbour's side) keeps the base texture.
-function EdgeProfile([int]$row) { Clamp01 (1.2 - $row / 11.0) }
+# Probability that a texel keeps the base texture, by its distance in rows from the neighbour's side,
+# for a strip that fades out over $depth rows.
+function Profile([double]$row, [double]$depth) { Clamp01 (1.2 - $row / (11.0 * $depth / 14.0)) }
+
+# Depth of the long strip at a column: 3 px at both ends, 7 px in the middle.
+function LongDepth([int]$col) { $ShortRows + ($LongRows - $ShortRows) * [Math]::Sin([Math]::PI * $col / 31.0) }
 
 # A 32x32 mask with every texel cut; Fill-Region then keeps texels at random.
 function New-Canvas {
@@ -51,21 +64,25 @@ function New-Mask {
     $rng = [System.Random]::new(7)
     $bmp = New-Canvas
 
-    Fill-Region $bmp $rng 0 0 32 14 { param($c, $r) EdgeProfile $r }
-    Fill-Region $bmp $rng 0 14 12 14 { param($c, $r) 0.5 * (($c + 1) / 12.0) * (EdgeProfile $r) }
-    Fill-Region $bmp $rng 12 14 12 14 { param($c, $r) 0.5 * ((12 - $c) / 12.0) * (EdgeProfile $r) }
-    Fill-Region $bmp $rng 24 14 8 8 { param($c, $r) Clamp01 (1.15 - [Math]::Sqrt([Math]::Pow(8 - ($c + 0.5), 2) + [Math]::Pow($r + 0.5, 2)) / 7.5) }
+    Fill-Region $bmp $rng 0 0 32 $ShortRows { param($c, $r) Profile $r $ShortRows }
+    Fill-Region $bmp $rng 0 6 32 $ShortRows { param($c, $r) Profile $r $ShortRows }
+    Fill-Region $bmp $rng 0 12 32 $LongRows { param($c, $r) Profile $r (LongDepth $c) }
+    Fill-Region $bmp $rng 0 26 12 $ShortRows { param($c, $r) 0.5 * (($c + 1) / 12.0) * (Profile $r $ShortRows) }
+    Fill-Region $bmp $rng 12 26 12 $ShortRows { param($c, $r) 0.5 * ((12 - $c) / 12.0) * (Profile $r $ShortRows) }
+    Fill-Region $bmp $rng 24 26 4 4 { param($c, $r) Clamp01 (1.15 - [Math]::Sqrt([Math]::Pow(4 - ($c + 0.5), 2) + [Math]::Pow($r + 0.5, 2)) / 3.75) }
 
     $bmp
 }
 
-# The neighbour's strip has density EdgeProfile(col) at this column, and this strip shows only where the
+# The neighbour's (short) strip has density Profile(col) at this column, and this strip shows only where the
 # neighbour's texel is not: this strip is drawn on top, so scale it by (1 - 0.5 * the neighbour's density).
 function New-ConcaveMask {
     $rng = [System.Random]::new(11)
     $bmp = New-Canvas
 
-    Fill-Region $bmp $rng 0 0 32 14 { param($c, $r) (EdgeProfile $r) * (1 - 0.5 * (EdgeProfile $c)) }
+    Fill-Region $bmp $rng 0 0 32 $ShortRows { param($c, $r) (Profile $r $ShortRows) * (1 - 0.5 * (Profile $c $ShortRows)) }
+    Fill-Region $bmp $rng 0 6 32 $ShortRows { param($c, $r) (Profile $r $ShortRows) * (1 - 0.5 * (Profile $c $ShortRows)) }
+    Fill-Region $bmp $rng 0 12 32 $LongRows { param($c, $r) (Profile $r (LongDepth $c)) * (1 - 0.5 * (Profile $c $ShortRows)) }
 
     $bmp
 }
@@ -147,10 +164,12 @@ foreach ($mask in @{ 'cutout.png' = (New-Mask); 'cutout-concave.png' = (New-Conc
 }
 
 Get-ChildItem (Join-Path $assets 'shapes\block\fringe') -Filter *.json | Remove-Item
-Write-Shape 'edge' @(0, 0) @(16, 7) @(0, 0, 16, 7) 15.03125 1
-Write-Shape 'bleed-east' @(10, 0) @(16, 7) @(0, 7, 6, 14) 15.03125 2
-Write-Shape 'bleed-west' @(0, 0) @(6, 7) @(6, 7, 12, 14) 15.03125 2
-Write-Shape 'inner' @(12, 0) @(16, 4) @(12, 7, 16, 11) 15.03125 1
+Write-Shape 'edge-a' @(0, 0) @(16, 3) @(0, 0, 16, 3) 15.03125 1
+Write-Shape 'edge-b' @(0, 0) @(16, 3) @(0, 3, 16, 6) 15.03125 1
+Write-Shape 'edge-long' @(0, 0) @(16, 7) @(0, 6, 16, 13) 15.03125 1
+Write-Shape 'bleed-east' @(10, 0) @(16, 3) @(0, 13, 6, 16) 15.03125 2
+Write-Shape 'bleed-west' @(0, 0) @(6, 3) @(6, 13, 12, 16) 15.03125 2
+Write-Shape 'inner' @(14, 0) @(16, 2) @(12, 13, 14, 15) 15.03125 1
 
 Write-Patch
-Write-Host 'Generated 2 masks, 4 shapes and patch.'
+Write-Host 'Generated 2 masks, 6 shapes and patch.'
