@@ -1,29 +1,13 @@
-﻿using Vintagestory.API.Client;
 using Vintagestory.API.Common;
-using Vintagestory.API.Config;
-using Vintagestory.API.Server;
 
-namespace SmoothStonePaths
+namespace SmoothStonePaths;
+
+public class SmoothStonePathsModSystem : ModSystem
 {
-    public class SmoothStonePathsModSystem : ModSystem
+    // Runs on both sides: the client needs the class to tessellate the fringe,
+    // and the server needs it to resolve the class named by the patched blocktypes.
+    public override void Start(ICoreAPI api)
     {
-
-        // Called on server and client
-        // Useful for registering block/entity classes on both sides
-        public override void Start(ICoreAPI api)
-        {
-            Mod.Logger.Notification("Hello from template mod: " + api.Side);
-        }
-
-        public override void StartServerSide(ICoreServerAPI api)
-        {
-            Mod.Logger.Notification("Hello from template mod server side: " + Lang.Get("smoothstonepaths:hello"));
-        }
-
-        public override void StartClientSide(ICoreClientAPI api)
-        {
-            Mod.Logger.Notification("Hello from template mod client side: " + Lang.Get("smoothstonepaths:hello"));
-        }
-
+        api.RegisterBlockClass("BlockBlendedPath", typeof(BlockBlendedPath));
     }
 }

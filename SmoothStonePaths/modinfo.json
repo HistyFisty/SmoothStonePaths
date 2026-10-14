@@ -3,10 +3,11 @@
     "modid": "smoothstonepaths",
     "name": "SmoothStonePaths",
     "authors": [
-        "Unknown"
+        "traugdor"
     ],
-    "description": "To be added",
+    "description": "Smooths out the transitions between stone paths and the surrounding terrain.",
     "version": "1.0.0",
+    "side": "Universal",
     "dependencies": {
         "game": ""
     }
