@@ -38,7 +38,9 @@ Requires Vintage Story 1.22.
 
 ## Compatibility
 
-- Affects stone paths and stone path slabs. Stone path stairs and full-block stone paths are left as they are.
+- Affects full-height stone paths. Stone path slabs, stairs and full-block stone paths are left as they are.
+- Works with [Add Some Paths](https://mods.vintagestory.at/addsomepaths): its gravel paths and packed dirt paths get the same blended edges. Their slabs are left as they are. Nothing changes if you don't have that mod installed.
+- Paths never blend into each other: a stone path next to a gravel path keeps a clean edge.
 - Mods that replace or patch the vanilla stone path files may conflict with it, or keep their own paths from getting the blended edge.
 
 ## Known limitations

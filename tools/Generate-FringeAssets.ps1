@@ -119,10 +119,12 @@ $($faceLines -join ",`n")
 }
 
 function Write-Patch {
-    $textureCodes = [ordered]@{ 'fringe-grass' = 'block/plant/grasscoverage/normal-top' }
-    foreach ($rock in $rocks) { $textureCodes["fringe-sand-$rock"] = "block/stone/sand/$rock" }
-    foreach ($rock in $rocks) { $textureCodes["fringe-gravel-$rock"] = "block/stone/gravel/$rock" }
-    foreach ($fertility in $fertilities) { $textureCodes["fringe-soil-$fertility"] = "block/soil/fert$fertility" }
+    # Base textures need an explicit domain: a patch resolves a domain-less path in the patched block's own
+    # domain, so on another mod's block 'block/...' would point into that mod's assets instead of the game's.
+    $textureCodes = [ordered]@{ 'fringe-grass' = 'game:block/plant/grasscoverage/normal-top' }
+    foreach ($rock in $rocks) { $textureCodes["fringe-sand-$rock"] = "game:block/stone/sand/$rock" }
+    foreach ($rock in $rocks) { $textureCodes["fringe-gravel-$rock"] = "game:block/stone/gravel/$rock" }
+    foreach ($fertility in $fertilities) { $textureCodes["fringe-soil-$fertility"] = "game:block/soil/fert$fertility" }
 
     $texture = { param($code, $base, $mask) "        `"$code`": { `"base`": `"$base`", `"blendedOverlays`": [ { `"base`": `"smoothstonepaths:block/fringe/$mask`", `"blendMode`": `"OverlayCutout`" } ] }" }
     $textureLines = foreach ($code in $textureCodes.Keys) {
@@ -131,14 +133,22 @@ function Write-Patch {
     }
     $textures = $textureLines -join ",`n"
 
-    $entries = foreach ($block in 'stonepath', 'stonepathslab') {
-        $file = "game:blocktypes/stone/generic/$block.json"
+    # Full-height paths only: slabs sit half a block below the ground beside them, so they get no fringe.
+    # Paths from other mods are patched only when that mod is installed.
+    $targets = @(
+        @{ File = 'game:blocktypes/stone/generic/stonepath.json'; ModId = $null },
+        @{ File = 'addsomepaths:blocktypes/gravelpath.json'; ModId = 'addsomepaths' },
+        @{ File = 'addsomepaths:blocktypes/packedpath.json'; ModId = 'addsomepaths' }
+    )
+    $entries = foreach ($target in $targets) {
+        $file = $target.File
+        $dependsOn = if ($target.ModId) { "`n    `"dependsOn`": [ { `"modid`": `"$($target.ModId)`" } ]," } else { '' }
 @"
   {
     "op": "add",
     "path": "/class",
     "value": "BlockBlendedPath",
-    "file": "$file",
+    "file": "$file",$dependsOn
     "side": "Server"
   },
   {
@@ -147,7 +157,7 @@ function Write-Patch {
     "value": {
 $textures
     },
-    "file": "$file",
+    "file": "$file",$dependsOn
     "side": "Server"
   }
 "@

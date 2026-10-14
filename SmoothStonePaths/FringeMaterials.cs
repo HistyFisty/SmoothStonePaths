@@ -42,7 +42,7 @@ internal static class FringeMaterials
     {
         if (neighbour == null || neighbour.Id == 0) return None;
         if (neighbour is BlockBlendedPath) return None;
-        if (neighbour.Code != null && neighbour.Code.Path.StartsWith("stonepath")) return None;
+        if (neighbour.Code != null && IsPath(neighbour.Code.Path)) return None;
 
         switch (neighbour.BlockMaterial)
         {
@@ -59,6 +59,19 @@ internal static class FringeMaterials
             default:
                 return None;
         }
+    }
+
+    // Path blocks never fringe each other, including ones this mod does not patch (slabs, stairs, full blocks):
+    // vanilla stone paths and Add Some Paths' gravel and packed dirt paths.
+    private static readonly string[] PathCodePrefixes = { "stonepath", "gravelpath", "packedpath" };
+
+    private static bool IsPath(string codePath)
+    {
+        foreach (string prefix in PathCodePrefixes)
+        {
+            if (codePath.StartsWith(prefix)) return true;
+        }
+        return false;
     }
 
     private static int VariantIndex(Block block, string variantKey, string[] values, int fallback)
