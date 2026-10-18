@@ -134,23 +134,51 @@ function Write-Patch {
     $textures = $textureLines -join ",`n"
 
     # Full-height paths only: slabs sit half a block below the ground beside them, so they get no fringe.
-    # Paths from other mods are patched only when that mod is installed.
+    # Paths from other mods are patched only when that mod is installed. Natural sand and gravel are patched only
+    # when TerrainBlending is on in the mod config (SmoothStonePathsModSystem copies it into the world config).
+    $terrainKey = 'smoothStonePathsTerrainBlending'
     $targets = @(
-        @{ File = 'game:blocktypes/stone/generic/stonepath.json'; ModId = $null },
-        @{ File = 'addsomepaths:blocktypes/gravelpath.json'; ModId = 'addsomepaths' },
-        @{ File = 'addsomepaths:blocktypes/packedpath.json'; ModId = 'addsomepaths' }
+        @{ File = 'game:blocktypes/stone/generic/stonepath.json'; Class = 'BlockBlendedPath' },
+        @{ File = 'addsomepaths:blocktypes/gravelpath.json'; Class = 'BlockBlendedPath'; ModId = 'addsomepaths' },
+        @{ File = 'addsomepaths:blocktypes/packedpath.json'; Class = 'BlockBlendedPath'; ModId = 'addsomepaths' },
+        @{ File = 'game:blocktypes/stone/sand.json'; Class = 'BlockBlendedTerrain'; Condition = $terrainKey },
+        @{ File = 'game:blocktypes/stone/gravel.json'; Class = 'BlockBlendedTerrain'; Condition = $terrainKey },
+        # Bare soil is drawn as a cube, which no block hook can reach, so it is switched to a shape drawn the same way.
+        # The soil class is shared by every fertility and grass coverage; BlockBlendedSoil only fringes the bare ones.
+        @{ File = 'game:blocktypes/soil/soil.json'; Class = 'BlockBlendedSoil'; Condition = $terrainKey; Extra = @(@{ Path = '/drawtypeByType/*-none'; Value = 'Json' }) },
+        @{ File = 'game:blocktypes/soil/bony.json'; Class = 'BlockBlendedTerrain'; Condition = $terrainKey; Extra = @(@{ Path = '/drawtype'; Value = 'Json' }) },
+        # Built soil blocks are cube-drawn too. Rammed earth picks its textures per variant, so it is baked only.
+        @{ File = 'game:blocktypes/soil/packeddirt.json'; Class = 'BlockBlendedTerrain'; Condition = $terrainKey; Extra = @(@{ Path = '/drawtype'; Value = 'Json' }) },
+        @{ File = 'game:blocktypes/soil/drypackeddirt.json'; Class = 'BlockBlendedTerrain'; Condition = $terrainKey; Extra = @(@{ Path = '/drawtype'; Value = 'Json' }) },
+        @{ File = 'game:blocktypes/soil/packeddirt-trampledearth.json'; Class = 'BlockBlendedTerrain'; Condition = $terrainKey; Extra = @(@{ Path = '/drawtype'; Value = 'Json' }) },
+        @{ File = 'game:blocktypes/soil/rammed.json'; Class = 'BlockBlendedTerrain'; Condition = $terrainKey; NoTextures = $true; Extra = @(@{ Path = '/drawtype'; Value = 'Json' }) },
+        # Wavy sand picks a tile of its texture per position, which the shape tessellator does as well.
+        @{ File = 'game:blocktypes/stone/sand-wavy.json'; Class = 'BlockBlendedTerrain'; Condition = $terrainKey; Extra = @(@{ Path = '/drawtype'; Value = 'Json' }) },
+        # Rock is mostly buried, and a block under another one is skipped before any fringe work is done.
+        @{ File = 'game:blocktypes/stone/rock.json'; Class = 'BlockBlendedTerrain'; Condition = $terrainKey; NoTextures = $true; Extra = @(@{ Path = '/drawtype'; Value = 'Json' }) },
+        # Already a shape; its textures are chosen per variant, so only the baked path is available there.
+        @{ File = 'game:blocktypes/devastation/soil.json'; Class = 'BlockBlendedTerrain'; Condition = $terrainKey; NoTextures = $true }
     )
     $entries = foreach ($target in $targets) {
         $file = $target.File
+        $class = $target.Class
         $dependsOn = if ($target.ModId) { "`n    `"dependsOn`": [ { `"modid`": `"$($target.ModId)`" } ]," } else { '' }
+        if ($target.Condition) { $dependsOn += "`n    `"condition`": { `"when`": `"$($target.Condition)`", `"isValue`": `"true`" }," }
+        $extra = foreach ($op in $target.Extra) {
 @"
+,
   {
     "op": "add",
-    "path": "/class",
-    "value": "BlockBlendedPath",
+    "path": "$($op.Path)",
+    "value": "$($op.Value)",
     "file": "$file",$dependsOn
     "side": "Server"
-  },
+  }
+"@
+        }
+        $texturePatch = if ($target.NoTextures) { '' } else {
+@"
+,
   {
     "op": "addmerge",
     "path": "/textures",
@@ -160,6 +188,16 @@ $textures
     "file": "$file",$dependsOn
     "side": "Server"
   }
+"@
+        }
+@"
+  {
+    "op": "add",
+    "path": "/class",
+    "value": "$class",
+    "file": "$file",$dependsOn
+    "side": "Server"
+  }$texturePatch$($extra -join '')
 "@
     }
     $json = "[`n" + ($entries -join ",`n") + "`n]`n"
@@ -180,6 +218,8 @@ Write-Shape 'edge-long' @(0, 0) @(16, 7) @(0, 6, 16, 13) 15.03125 1
 Write-Shape 'bleed-east' @(10, 0) @(16, 3) @(0, 13, 6, 16) 15.03125 2
 Write-Shape 'bleed-west' @(0, 0) @(6, 3) @(6, 13, 12, 16) 15.03125 2
 Write-Shape 'inner' @(14, 0) @(16, 2) @(12, 13, 14, 15) 15.03125 1
+# The baked path draws all the grass as one overlay quad covering the whole block top.
+Write-Shape 'overlay' @(0, 0) @(16, 16) @(0, 0, 16, 16) 15.03125 1
 
 Write-Patch
-Write-Host 'Generated 2 masks, 6 shapes and patch.'
+Write-Host 'Generated 2 masks, 7 shapes and patch.'

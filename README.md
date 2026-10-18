@@ -36,6 +36,24 @@ It works on paths you have already placed. It adds no new blocks and saves nothi
 
 Requires Vintage Story 1.22.
 
+## Configuration
+
+The mod creates `ModConfig/smoothstonepaths.json` in your `VintagestoryData` folder the first time it runs:
+
+```json
+{
+  "TerrainBlending": false
+}
+```
+
+- **TerrainBlending** (off by default): also blend natural terrain into itself. Only the tops of blocks open to the sky are affected.
+  - Grass grows onto the edges of sand, wavy sand, gravel, rock, bare soil (the `none` grass coverage only), bony soil, devastated soil, packed dirt, arid packed dirt, trampled earth and rammed earth.
+  - Sand spills onto gravel.
+  - Soil that already has grass on it is left alone.
+  - Turning it on changes how these blocks are drawn, so exposed rock in particular can make chunks a little slower to build.
+
+On a server, the server's setting applies to every player. Restart the game or server after changing it.
+
 ## Compatibility
 
 - Affects full-height stone paths. Stone path slabs, stairs and full-block stone paths are left as they are.

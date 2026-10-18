@@ -35,6 +35,23 @@ internal static class FringeMaterials
 
     public static readonly string[] TextureCodes = BuildTextureCodes();
 
+    public static bool IsSand(int material) => material >= SandBase && material < GravelBase;
+
+    /// <summary>
+    /// Whether a terrain fringe flows from a neighbour with this material id onto a natural terrain block. Each
+    /// boundary flows one way only, so two blocks never fringe onto each other: grass onto sand, gravel and bare soil, sand onto gravel.
+    /// </summary>
+    public static bool FlowsOnto(int material, EnumBlockMaterial receiver)
+    {
+        switch (receiver)
+        {
+            case EnumBlockMaterial.Soil: return material == Grass;
+            case EnumBlockMaterial.Sand: return material == Grass;
+            case EnumBlockMaterial.Gravel: return material == Grass || IsSand(material);
+            default: return false;
+        }
+    }
+
     /// <summary>Only the grass fringe is tinted with the climate and season colour maps.</summary>
     public static bool IsTinted(int material) => material == Grass;
 
@@ -79,6 +96,15 @@ internal static class FringeMaterials
         if (!block.Variant.TryGetValue(variantKey, out string value)) return fallback;
         int index = Array.IndexOf(values, value);
         return index >= 0 ? index : fallback;
+    }
+
+    /// <summary>The vanilla texture a fringe material is cut from, without the textures/ prefix or the .png ending, e.g. game:block/stone/sand/granite.</summary>
+    public static string TexturePath(int material)
+    {
+        if (material == Grass) return "game:block/plant/grasscoverage/normal-top";
+        if (material >= SoilBase) return "game:block/soil/fert" + Fertilities[material - SoilBase];
+        if (material >= GravelBase) return "game:block/stone/gravel/" + Rocks[material - GravelBase];
+        return "game:block/stone/sand/" + Rocks[material - SandBase];
     }
 
     private static string[] BuildTextureCodes()

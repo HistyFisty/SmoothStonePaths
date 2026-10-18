@@ -39,6 +39,30 @@ internal static class StripVariant
 /// </summary>
 internal static class FringePlan
 {
+    /// <summary>Rotation about Y, in degrees, that carries a piece authored for the north side (or north-east corner) onto side or corner <c>index</c>.</summary>
+    public static readonly int[] RotationY = { 0, 270, 180, 90 };
+
+    // Pieces can overlap, so each sits on its own layer. From the bottom up:
+    //   plain edges, by side (adjacent same-material strips overlap in their corner),
+    //   concave edges, by side (each is drawn over the neighbouring side's strip; only when all four sides are
+    //     concave does the cycle force one corner to be drawn the other way round, which is harmless),
+    //   bleeds (which overlap their own strip, plain or concave).
+    // Inner corners overlap nothing.
+    private const int ConcaveLayer = 4;
+    private const int BleedLayer = 8;
+
+    public static int Layer(Piece piece)
+    {
+        switch (piece.Kind)
+        {
+            case PieceKind.Edge: return piece.Index;
+            case PieceKind.EdgeConcave: return ConcaveLayer + piece.Index;
+            case PieceKind.BleedEast:
+            case PieceKind.BleedWest: return BleedLayer;
+            default: return 0;
+        }
+    }
+
     public static int Side(long key, int side) => Slot(key, side);
 
     public static int Corner(long key, int corner) => Slot(key, 4 + corner);
