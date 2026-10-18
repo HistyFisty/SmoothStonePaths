@@ -1,0 +1,23 @@
+{
+  "editor": { "allAngles": false, "entityTextureMode": false },
+  "textureWidth": 16,
+  "textureHeight": 16,
+  "textures": {},
+  "elements": [
+    {
+      "name": "fringe",
+      "from": [14, 8.03125, 0],
+      "to": [16, 8.03125, 2],
+      "renderPass": 8,
+      "zOffset": 1,
+      "faces": {
+        "north": { "texture": "#fringe", "uv": [0, 0, 1, 1], "enabled": false },
+        "east": { "texture": "#fringe", "uv": [0, 0, 1, 1], "enabled": false },
+        "south": { "texture": "#fringe", "uv": [0, 0, 1, 1], "enabled": false },
+        "west": { "texture": "#fringe", "uv": [0, 0, 1, 1], "enabled": false },
+        "down": { "texture": "#fringe", "uv": [0, 0, 1, 1], "enabled": false },
+        "up": { "texture": "#fringe", "uv": [12, 13, 14, 15] }
+      }
+    }
+  ]
+}
